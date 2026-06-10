@@ -48,10 +48,10 @@ def get_google_auth_url() -> str:
     flow = get_google_flow()
 
     auth_url, _ = flow.authorization_url(
-        access_type="offline",
-        include_granted_scopes="true",
-        prompt="consent",
-    )
+    access_type="offline",
+    include_granted_scopes="true",
+    prompt="consent select_account",
+)
 
     return auth_url
 
@@ -161,3 +161,13 @@ def create_google_calendar_event(event_data):
         )
 
     return created_event
+
+
+def disconnect_google_calendar() -> bool:
+    token_path = get_token_path()
+
+    if token_path.exists():
+        token_path.unlink()
+        return True
+
+    return False

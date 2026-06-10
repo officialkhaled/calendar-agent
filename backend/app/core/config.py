@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     google_credentials_file: str = "credentials.json"
     google_token_file: str = "token.json"
     google_redirect_uri: str = "http://127.0.0.1:8000/api/auth/google/callback"
+    
+    database_url: str = "sqlite:///./calendar_agent.db"
 
     class Config:
         env_file = ".env"

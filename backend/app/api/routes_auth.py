@@ -3,6 +3,7 @@ from fastapi.responses import RedirectResponse
 
 from app.core.config import settings
 from app.services.google_calendar_service import (
+    disconnect_google_calendar,
     exchange_code_for_token,
     get_google_auth_url,
     is_calendar_connected,
@@ -32,5 +33,18 @@ def google_calendar_status():
 
     return {
         "connected": connected,
-        "message": "Google Calendar connected" if connected else "Google Calendar not connected",
+        "message": "Google Calendar connected"
+        if connected
+        else "Google Calendar not connected",
+    }
+
+
+@router.post("/auth/google/disconnect")
+def disconnect_google_account():
+    disconnected = disconnect_google_calendar()
+
+    return {
+        "disconnected": disconnected,
+        "connected": False,
+        "message": "Google Calendar disconnected. You can now connect another account.",
     }

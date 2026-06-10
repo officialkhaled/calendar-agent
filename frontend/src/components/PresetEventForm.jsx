@@ -69,17 +69,21 @@ function PresetEventForm({onPreviewGenerated}) {
     return (
         <form
             onSubmit={handleGeneratePreview}
-            className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm"
+            className="rounded-3xl border border-white/70 bg-white/85 p-6 shadow-2xl shadow-slate-200/70 backdrop-blur-xl"
         >
             <div className="mb-6">
-                <p className="text-sm font-medium text-blue-600">Manual Mode</p>
-                <h2 className="mt-1 text-2xl font-bold text-gray-950">
-                    Create from Preset
-                </h2>
-                <p className="mt-2 text-sm text-gray-500">
-                    Select predefined options and generate a calendar event preview.
-                </p>
-            </div>
+  <p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-500">
+    Manual Scheduler
+  </p>
+
+  <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950">
+    Create from saved preset
+  </h2>
+
+  <p className="mt-2 text-sm leading-6 text-slate-500">
+    Select predefined values and generate a clean event preview.
+  </p>
+</div>
 
             <div className="grid gap-5">
                 <div>
