@@ -46,3 +46,40 @@ python -m venv venv
 venv\Scripts\activate
 pip install -r requirements.txt
 uvicorn app.main:app --reload
+```
+
+### Frontend
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+### LM Studio
+Start LM Studio local server:
+```bash
+http://127.0.0.1:1234/api/v1
+```
+Use a small model for best performance.
+
+### Environment Variables
+Copy:
+```bash
+backend/.env.example → backend/.env
+frontend/.env.example → frontend/.env
+```
+
+### Google Calendar Setup
+1. Create Google Cloud project
+2. Enable Google Calendar API
+3. Create OAuth Web Client
+4. Add redirect URI:
+```bash
+http://127.0.0.1:8000/api/auth/google/callback
+```
+
+5. Download credentials and save as:
+```bash
+backend/credentials.json
+```
+
