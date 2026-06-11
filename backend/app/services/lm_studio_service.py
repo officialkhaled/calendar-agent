@@ -1,5 +1,6 @@
 import json
-from datetime import date
+import re
+from datetime import date, timedelta
 
 import httpx
 from fastapi import HTTPException
@@ -39,64 +40,69 @@ def build_calendar_agent_prompt(command: str, presets: list) -> str:
     preset_context = format_presets_for_prompt(presets)
 
     return f"""
-You are CalPilot, an AI calendar event extraction agent.
+    You are CalPilot, an AI calendar event extraction agent.
 
-Your job:
-Convert the user's natural language command into structured JSON for creating a Google Calendar event.
+    Your job:
+    Convert the user's natural language command into structured JSON for creating a Google Calendar event.
 
-Return ONLY valid JSON.
-No markdown.
-No explanation.
-No extra text.
-No comments.
-No code fences.
+    CRITICAL OUTPUT RULE:
+    Your entire response must be a single valid JSON object.
+    The first character of your response must be {{
+    The last character of your response must be }}
+    Do not explain your reasoning.
+    Do not include analysis.
+    Do not include markdown.
+    Do not include code fences.
+    Do not include any text before or after the JSON.
 
-Current date: {today}
-Timezone: {settings.app_timezone}
+    Current date: {today}
+    Timezone: {settings.app_timezone}
 
-Saved user presets:
-{preset_context}
+    Saved user presets:
+    {preset_context}
 
-Known shift leaders:
-- FH
-- PK
+    Known shift leaders:
+    - FH
+    - PK
 
-Important interpretation rules:
-- Use date format YYYY-MM-DD.
-- Use time format HH:mm.
-- If the user says "tomorrow", calculate tomorrow from current date.
-- If the user says "next Monday", calculate the next upcoming Monday after current date.
-- If the user says "Friday", use the next upcoming Friday.
-- If user says "3 to 11" for a work shift, interpret it as 15:00 to 23:00 unless context clearly means morning.
-- If user says "7 to 9" for study/gym/personal event, interpret it as 19:00 to 21:00 unless context clearly means morning.
-- Match the command to the closest saved preset by label, title, or event_type.
-- If the command matches a saved preset and time is missing, use that preset's default_start_time and default_end_time.
-- If reminder is missing, use the matched preset's default_reminder_minutes.
-- If color is missing, use the matched preset's default_color_id and color_label.
-- If no preset matches, use event_type "general_event", color_id "1", color_label "General", and reminder_minutes 30.
-- If a required field is missing and cannot be inferred, add it to missing_fields.
-- Required fields: date, start_time, end_time, title.
-- Do not create the event. Only return JSON.
-- If a Tesco shift leader is given, include it in title, for example "Shift @ Tesco - FH".
-- If no shift leader is given, shift_leader must be null.
+    Important interpretation rules:
+    - Use date format YYYY-MM-DD.
+    - Use time format HH:mm.
+    - If the user says "tomorrow", calculate tomorrow from current date.
+    - If the user says "next Monday", calculate the next upcoming Monday after current date.
+    - If the user says "Friday", use the next upcoming Friday.
+    - If user says "3 to 11" for a work shift, interpret it as 15:00 to 23:00 unless context clearly means morning.
+    - If user says "7 to 9" for study/gym/personal event, interpret it as 19:00 to 21:00 unless context clearly means morning.
+    - Match the command to the closest saved preset by label, title, or event_type.
+    - If the command matches a saved preset and time is missing, use that preset's default_start_time and default_end_time.
+    - If reminder is missing, use the matched preset's default_reminder_minutes.
+    - If color is missing, use the matched preset's default_color_id and color_label.
+    - If no preset matches, use event_type "general_event", color_id "1", color_label "General", and reminder_minutes 30.
+    - If a required field is missing and cannot be inferred, add it to missing_fields.
+    - Required fields: date, start_time, end_time, title.
+    - Do not create the event. Only return JSON.
+    - If a Tesco shift leader is given, include it in title, for example "Shift @ Tesco - FH".
+    - If no shift leader is given, shift_leader must be null.
 
-User command:
-{command}
+    User command:
+    {command}
 
-Return exactly this JSON structure:
-{{
-    "intent": "create_calendar_event",
-    "event_type": "preset_key_or_general_event",
-    "title": "Event title",
-    "date": "YYYY-MM-DD",
-    "start_time": "HH:mm",
-    "end_time": "HH:mm",
-    "shift_leader": null,
-    "reminder_minutes": 30,
-    "color_id": "1",
-    "color_label": "General",
-    "missing_fields": []
-}}
+    If you understand the task, do not say anything. Only output the JSON object.
+
+    Return exactly this JSON structure:
+    {{
+        "intent": "create_calendar_event",
+        "event_type": "preset_key_or_general_event",
+        "title": "Event title",
+        "date": "YYYY-MM-DD",
+        "start_time": "HH:mm",
+        "end_time": "HH:mm",
+        "shift_leader": null,
+        "reminder_minutes": 30,
+        "color_id": "1",
+        "color_label": "General",
+        "missing_fields": []
+    }}
 """
 
 
@@ -163,6 +169,56 @@ def extract_content_from_lm_studio_response(data: dict) -> str:
         detail=f"Unexpected LM Studio response format: {data}",
     )
 
+def get_next_weekday(target_weekday: int) -> str:
+    """
+    Monday = 0, Sunday = 6
+    Returns the next upcoming weekday from today.
+    If today is the same weekday, it returns today.
+    """
+    today = date.today()
+    days_ahead = target_weekday - today.weekday()
+
+    if days_ahead < 0:
+        days_ahead += 7
+
+    target_date = today + timedelta(days=days_ahead)
+
+    return target_date.isoformat()
+
+
+def resolve_date_from_command(command: str) -> str | None:
+    command_lower = command.lower()
+
+    if "tomorrow" in command_lower:
+        return (date.today() + timedelta(days=1)).isoformat()
+
+    weekday_map = {
+        "monday": 0,
+        "mon": 0,
+        "tuesday": 1,
+        "tue": 1,
+        "wednesday": 2,
+        "wed": 2,
+        "thursday": 3,
+        "thu": 3,
+        "friday": 4,
+        "fri": 4,
+        "saturday": 5,
+        "sat": 5,
+        "sunday": 6,
+        "sun": 6,
+    }
+
+    for weekday_name, weekday_number in weekday_map.items():
+        if weekday_name in command_lower:
+            return get_next_weekday(weekday_number)
+
+    iso_date_match = re.search(r"\b\d{4}-\d{2}-\d{2}\b", command_lower)
+
+    if iso_date_match:
+        return iso_date_match.group(0)
+
+    return None
 
 def apply_backend_fallbacks(event_data: dict, presets: list) -> dict:
     """
@@ -215,6 +271,154 @@ def apply_backend_fallbacks(event_data: dict, presets: list) -> dict:
 
     return event_data
 
+def resolve_times_from_command(command: str, matched_preset=None):
+    command_lower = command.lower()
+
+    time_range_match = re.search(
+        r"\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*(?:to|-)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b",
+        command_lower,
+    )
+
+    if not time_range_match:
+        if matched_preset:
+            return matched_preset.default_start_time, matched_preset.default_end_time
+
+        return None, None
+
+    start_hour = int(time_range_match.group(1))
+    start_minute = int(time_range_match.group(2) or 0)
+    start_period = time_range_match.group(3)
+
+    end_hour = int(time_range_match.group(4))
+    end_minute = int(time_range_match.group(5) or 0)
+    end_period = time_range_match.group(6)
+
+    is_shift = "shift" in command_lower or "tesco" in command_lower
+
+    if start_period == "pm" and start_hour < 12:
+        start_hour += 12
+
+    if end_period == "pm" and end_hour < 12:
+        end_hour += 12
+
+    if start_period == "am" and start_hour == 12:
+        start_hour = 0
+
+    if end_period == "am" and end_hour == 12:
+        end_hour = 0
+
+    # Smart defaults for common shorthand:
+    # "3 to 11" for shifts = 15:00 to 23:00
+    # "7 to 9" for study/gym = 19:00 to 21:00
+    if not start_period and not end_period:
+        if is_shift:
+            if start_hour < 12:
+                start_hour += 12
+            if end_hour < 12:
+                end_hour += 12
+        else:
+            if start_hour < 12:
+                start_hour += 12
+            if end_hour < 12:
+                end_hour += 12
+
+    start_time = f"{start_hour:02d}:{start_minute:02d}"
+    end_time = f"{end_hour:02d}:{end_minute:02d}"
+
+    return start_time, end_time
+
+def find_matching_preset(command: str, presets: list):
+    command_lower = command.lower()
+
+    for preset in presets:
+        searchable_values = [
+            preset.key.lower(),
+            preset.label.lower(),
+            preset.default_title.lower(),
+        ]
+
+        for value in searchable_values:
+            value_words = value.replace("_", " ").split()
+
+            if all(word in command_lower for word in value_words):
+                return preset
+
+    # Extra useful matching
+    if "tesco" in command_lower or "shift" in command_lower:
+        for preset in presets:
+            if preset.key == "tesco_shift":
+                return preset
+
+    return None
+
+
+def extract_shift_leader(command: str) -> str | None:
+    command_upper = command.upper()
+
+    known_leaders = ["FH", "PK"]
+
+    for leader in known_leaders:
+        if re.search(rf"\b{leader}\b", command_upper):
+            return leader
+
+    return None
+
+
+def build_fallback_event_from_command(command: str, presets: list) -> dict:
+    matched_preset = find_matching_preset(command, presets)
+
+    event_date = resolve_date_from_command(command)
+
+    start_time, end_time = resolve_times_from_command(
+        command=command,
+        matched_preset=matched_preset,
+    )
+
+    shift_leader = extract_shift_leader(command)
+
+    if matched_preset:
+        title = matched_preset.default_title
+
+        if matched_preset.key == "tesco_shift" and shift_leader:
+            title = f"{matched_preset.default_title} - {shift_leader}"
+
+        event_data = {
+            "intent": "create_calendar_event",
+            "event_type": matched_preset.key,
+            "title": title,
+            "date": event_date,
+            "start_time": start_time or matched_preset.default_start_time,
+            "end_time": end_time or matched_preset.default_end_time,
+            "shift_leader": shift_leader,
+            "reminder_minutes": matched_preset.default_reminder_minutes,
+            "color_id": matched_preset.default_color_id,
+            "color_label": matched_preset.color_label,
+            "missing_fields": [],
+        }
+    else:
+        event_data = {
+            "intent": "create_calendar_event",
+            "event_type": "general_event",
+            "title": command.strip(),
+            "date": event_date,
+            "start_time": start_time,
+            "end_time": end_time,
+            "shift_leader": shift_leader,
+            "reminder_minutes": 30,
+            "color_id": "1",
+            "color_label": "General",
+            "missing_fields": [],
+        }
+
+    missing_fields = []
+
+    for field in ["title", "date", "start_time", "end_time"]:
+        if not event_data.get(field):
+            missing_fields.append(field)
+
+    event_data["missing_fields"] = missing_fields
+
+    return event_data
 
 async def generate_event_json_from_command(command: str, presets: list) -> dict:
     prompt = build_calendar_agent_prompt(command, presets)
@@ -263,7 +467,19 @@ async def generate_event_json_from_command(command: str, presets: list) -> dict:
         return apply_backend_fallbacks(parsed_data, presets)
 
     except json.JSONDecodeError:
+        fallback_event = build_fallback_event_from_command(
+            command=command,
+            presets=presets,
+        )
+
+    if fallback_event["missing_fields"]:
         raise HTTPException(
             status_code=500,
-            detail=f"AI returned invalid JSON: {cleaned_content}",
+            detail=(
+                "AI returned invalid JSON and fallback parser could not infer "
+                f"these fields: {fallback_event['missing_fields']}. "
+                f"AI output was: {cleaned_content[:300]}"
+            ),
         )
+
+    return fallback_event
