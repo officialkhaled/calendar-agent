@@ -7,7 +7,7 @@ import {
 } from "../data/eventPresets";
 import {buildEventTitle} from "../utils/eventUtils";
 
-function PresetEventForm({onPreviewGenerated}) {
+function PresetEventForm({onPreviewGenerated, refreshKey, onNotify}) {
     const [presets, setPresets] = useState([]);
     const [isLoadingPresets, setIsLoadingPresets] = useState(true);
     const [presetError, setPresetError] = useState("");
@@ -43,7 +43,7 @@ function PresetEventForm({onPreviewGenerated}) {
         };
 
         loadPresets();
-    }, []);
+    }, [refreshKey]);
 
     const selectedPreset = useMemo(() => {
         return presets.find((preset) => String(preset.id) === String(presetId));
@@ -99,6 +99,12 @@ function PresetEventForm({onPreviewGenerated}) {
         };
 
         onPreviewGenerated(preview);
+
+        onNotify?.({
+            type: "success",
+            title: "Manual preview generated",
+            message: "Your event preview is ready to review.",
+        });
     };
 
     if (isLoadingPresets) {

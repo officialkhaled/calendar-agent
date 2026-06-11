@@ -9,3 +9,8 @@ export async function createPreset(presetData) {
   const response = await apiClient.post("/presets", presetData);
   return response.data;
 }
+
+export async function deletePreset(presetId) {
+  const response = await apiClient.delete(`/presets/${presetId}`);
+  return response.data;
+}

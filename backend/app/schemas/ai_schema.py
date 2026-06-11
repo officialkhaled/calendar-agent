@@ -15,6 +15,6 @@ class AIEventPreviewResponse(BaseModel):
     end_time: str
     shift_leader: Optional[str] = None
     reminder_minutes: int = 30
-    color_id: str = "9"
-    color_label: str = "Work"
+    color_id: str = "1"
+    color_label: str = "General"
     missing_fields: List[str] = []

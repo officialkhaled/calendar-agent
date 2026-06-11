@@ -14,7 +14,7 @@ def create_event(request: CalendarEventCreateRequest):
     created_event = create_google_calendar_event(request)
 
     return CalendarEventCreateResponse(
-        message="Event created successfully",
+        message="Event created successfully in Google Calendar",
         google_event_id=created_event.get("id"),
         html_link=created_event.get("htmlLink"),
     )

@@ -7,61 +7,95 @@ from fastapi import HTTPException
 from app.core.config import settings
 
 
-def build_calendar_agent_prompt(command: str) -> str:
+def format_presets_for_prompt(presets: list) -> str:
+    if not presets:
+        return """
+No saved presets found.
+If the command is still clear, create a general calendar event.
+"""
+
+    preset_blocks = []
+
+    for preset in presets:
+        preset_blocks.append(
+            f"""
+Preset:
+- event_type: {preset.key}
+- label: {preset.label}
+- default_title: {preset.default_title}
+- default_start_time: {preset.default_start_time}
+- default_end_time: {preset.default_end_time}
+- default_reminder_minutes: {preset.default_reminder_minutes}
+- default_color_id: {preset.default_color_id}
+- color_label: {preset.color_label}
+"""
+        )
+
+    return "\n".join(preset_blocks)
+
+
+def build_calendar_agent_prompt(command: str, presets: list) -> str:
     today = date.today().isoformat()
+    preset_context = format_presets_for_prompt(presets)
 
     return f"""
-You are an AI calendar event extraction agent.
+You are CalPilot, an AI calendar event extraction agent.
+
+Your job:
+Convert the user's natural language command into structured JSON for creating a Google Calendar event.
 
 Return ONLY valid JSON.
-No explanation.
 No markdown.
-No code block.
+No explanation.
+No extra text.
+No comments.
+No code fences.
 
 Current date: {today}
 Timezone: {settings.app_timezone}
 
-Known Tesco shift template:
-- event_type: tesco_shift
-- default title: Shift @ Tesco
-- default start_time: 15:00
-- default end_time: 23:00
-- default reminder_minutes: 30
-- default color_id: 9
-- default color_label: Work
+Saved user presets:
+{preset_context}
 
 Known shift leaders:
 - FH
 - PK
 
+Important interpretation rules:
+- Use date format YYYY-MM-DD.
+- Use time format HH:mm.
+- If the user says "tomorrow", calculate tomorrow from current date.
+- If the user says "next Monday", calculate the next upcoming Monday after current date.
+- If the user says "Friday", use the next upcoming Friday.
+- If user says "3 to 11" for a work shift, interpret it as 15:00 to 23:00 unless context clearly means morning.
+- If user says "7 to 9" for study/gym/personal event, interpret it as 19:00 to 21:00 unless context clearly means morning.
+- Match the command to the closest saved preset by label, title, or event_type.
+- If the command matches a saved preset and time is missing, use that preset's default_start_time and default_end_time.
+- If reminder is missing, use the matched preset's default_reminder_minutes.
+- If color is missing, use the matched preset's default_color_id and color_label.
+- If no preset matches, use event_type "general_event", color_id "1", color_label "General", and reminder_minutes 30.
+- If a required field is missing and cannot be inferred, add it to missing_fields.
+- Required fields: date, start_time, end_time, title.
+- Do not create the event. Only return JSON.
+- If a Tesco shift leader is given, include it in title, for example "Shift @ Tesco - FH".
+- If no shift leader is given, shift_leader must be null.
+
 User command:
 {command}
 
-Rules:
-- If user says tomorrow, calculate tomorrow from current date.
-- Use date format YYYY-MM-DD.
-- Use time format HH:mm.
-- If user says 3 to 11 for Tesco shift, treat it as 15:00 to 23:00.
-- If time is missing for Tesco shift, use 15:00 to 23:00.
-- If reminder is missing, use 30.
-- If color is missing, use 9 and Work.
-- If shift leader is missing, set shift_leader to null.
-- If shift leader exists, title must be "Shift @ Tesco - FH" or "Shift @ Tesco - PK".
-- If shift leader is missing, title must be "Shift @ Tesco".
-
 Return exactly this JSON structure:
 {{
-  "intent": "create_calendar_event",
-  "event_type": "tesco_shift",
-  "title": "Shift @ Tesco - FH",
-  "date": "YYYY-MM-DD",
-  "start_time": "15:00",
-  "end_time": "23:00",
-  "shift_leader": "FH",
-  "reminder_minutes": 30,
-  "color_id": "9",
-  "color_label": "Work",
-  "missing_fields": []
+    "intent": "create_calendar_event",
+    "event_type": "preset_key_or_general_event",
+    "title": "Event title",
+    "date": "YYYY-MM-DD",
+    "start_time": "HH:mm",
+    "end_time": "HH:mm",
+    "shift_leader": null,
+    "reminder_minutes": 30,
+    "color_id": "1",
+    "color_label": "General",
+    "missing_fields": []
 }}
 """
 
@@ -88,10 +122,6 @@ def clean_ai_json_response(content: str) -> str:
 
 
 def extract_content_from_lm_studio_response(data: dict) -> str:
-    """
-    Supports multiple possible LM Studio response shapes.
-    """
-
     if "choices" in data:
         return data["choices"][0]["message"]["content"]
 
@@ -134,8 +164,60 @@ def extract_content_from_lm_studio_response(data: dict) -> str:
     )
 
 
-async def generate_event_json_from_command(command: str) -> dict:
-    prompt = build_calendar_agent_prompt(command)
+def apply_backend_fallbacks(event_data: dict, presets: list) -> dict:
+    """
+    Safety layer.
+    Even if AI misses a preset default, backend applies known defaults.
+    """
+
+    event_type = event_data.get("event_type")
+    matched_preset = None
+
+    for preset in presets:
+        if preset.key == event_type:
+            matched_preset = preset
+            break
+
+    if matched_preset:
+        if not event_data.get("title"):
+            event_data["title"] = matched_preset.default_title
+
+        if not event_data.get("start_time"):
+            event_data["start_time"] = matched_preset.default_start_time
+
+        if not event_data.get("end_time"):
+            event_data["end_time"] = matched_preset.default_end_time
+
+        if not event_data.get("reminder_minutes"):
+            event_data["reminder_minutes"] = matched_preset.default_reminder_minutes
+
+        if not event_data.get("color_id"):
+            event_data["color_id"] = matched_preset.default_color_id
+
+        if not event_data.get("color_label"):
+            event_data["color_label"] = matched_preset.color_label
+
+    event_data.setdefault("intent", "create_calendar_event")
+    event_data.setdefault("event_type", "general_event")
+    event_data.setdefault("reminder_minutes", 30)
+    event_data.setdefault("color_id", "1")
+    event_data.setdefault("color_label", "General")
+    event_data.setdefault("shift_leader", None)
+    event_data.setdefault("missing_fields", [])
+
+    missing_fields = event_data.get("missing_fields") or []
+
+    for required_field in ["title", "date", "start_time", "end_time"]:
+        if not event_data.get(required_field) and required_field not in missing_fields:
+            missing_fields.append(required_field)
+
+    event_data["missing_fields"] = missing_fields
+
+    return event_data
+
+
+async def generate_event_json_from_command(command: str, presets: list) -> dict:
+    prompt = build_calendar_agent_prompt(command, presets)
 
     url = f"{settings.lm_studio_base_url}/chat"
 
@@ -163,7 +245,7 @@ async def generate_event_json_from_command(command: str) -> dict:
     except httpx.TimeoutException:
         raise HTTPException(
             status_code=504,
-            detail="LM Studio took too long to respond. Try a smaller model or wait for the first model response to finish.",
+            detail="LM Studio took too long to respond. Try reducing context length or using a smaller model.",
         )
 
     except httpx.HTTPStatusError as error:
@@ -177,7 +259,8 @@ async def generate_event_json_from_command(command: str) -> dict:
     cleaned_content = clean_ai_json_response(content)
 
     try:
-        return json.loads(cleaned_content)
+        parsed_data = json.loads(cleaned_content)
+        return apply_backend_fallbacks(parsed_data, presets)
 
     except json.JSONDecodeError:
         raise HTTPException(

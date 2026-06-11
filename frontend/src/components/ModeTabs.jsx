@@ -10,11 +10,16 @@ function ModeTabs({activeMode, onModeChange}) {
             label: "Manual Mode",
             description: "Use saved presets",
         },
+        {
+            id: "settings",
+            label: "Presets",
+            description: "Manage templates",
+        },
     ];
 
     return (
         <div className="rounded-3xl border border-white/70 bg-white/80 p-2 shadow-xl shadow-slate-200/70 backdrop-blur-xl">
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid gap-2 sm:grid-cols-3">
                 {tabs.map((tab) => {
                     const isActive = activeMode === tab.id;
 

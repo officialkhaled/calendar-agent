@@ -5,7 +5,11 @@ from sqlalchemy.orm import Session
 
 from app.db.database import get_db
 from app.schemas.preset_schema import EventPresetCreate, EventPresetResponse
-from app.services.preset_service import create_preset, get_all_presets
+from app.services.preset_service import (
+    create_preset,
+    delete_preset,
+    get_all_presets,
+)
 
 router = APIRouter()
 
@@ -21,3 +25,11 @@ def add_preset(
     db: Session = Depends(get_db),
 ):
     return create_preset(db, request)
+
+
+@router.delete("/presets/{preset_id}")
+def remove_preset(
+    preset_id: int,
+    db: Session = Depends(get_db),
+):
+    return delete_preset(db, preset_id)

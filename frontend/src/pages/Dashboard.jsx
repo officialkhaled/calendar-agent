@@ -7,12 +7,14 @@ import GoogleCalendarStatus from "../components/GoogleCalendarStatus";
 import ToastNotification from "../components/ToastNotification";
 import ModeTabs from "../components/ModeTabs";
 import AnimatedPanel from "../components/AnimatedPanel";
+import PresetManager from "../components/PresetManager";
 
 function Dashboard() {
     const [eventPreview, setEventPreview] = useState(null);
     const [createdEvent, setCreatedEvent] = useState(null);
     const [activeMode, setActiveMode] = useState("ai");
     const [notification, setNotification] = useState(null);
+    const [presetRefreshKey, setPresetRefreshKey] = useState(0);
 
     const handleNotify = (payload) => {
         setNotification(payload);
@@ -32,6 +34,10 @@ function Dashboard() {
             title: "Event created",
             message: "Your event was added to Google Calendar.",
         });
+    };
+
+    const handlePresetsChanged = () => {
+        setPresetRefreshKey((current) => current + 1);
     };
 
     return (
@@ -121,13 +127,26 @@ function Dashboard() {
                         <ModeTabs activeMode={activeMode} onModeChange={setActiveMode}/>
 
                         <AnimatedPanel animationKey={activeMode}>
-                            {activeMode === "ai" ? (
+                            {activeMode === "ai" && (
                                 <AICommandBox
                                     onPreviewGenerated={handlePreviewGenerated}
                                     onNotify={handleNotify}
                                 />
-                            ) : (
-                                <PresetEventForm onPreviewGenerated={handlePreviewGenerated}/>
+                            )}
+
+                            {activeMode === "manual" && (
+                                <PresetEventForm
+                                    onPreviewGenerated={handlePreviewGenerated}
+                                    refreshKey={presetRefreshKey}
+                                    onNotify={handleNotify}
+                                />
+                            )}
+
+                            {activeMode === "settings" && (
+                                <PresetManager
+                                    onNotify={handleNotify}
+                                    onPresetsChanged={handlePresetsChanged}
+                                />
                             )}
                         </AnimatedPanel>
                     </div>
