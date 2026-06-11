@@ -8,6 +8,7 @@ import ToastNotification from "../components/ToastNotification";
 import ModeTabs from "../components/ModeTabs";
 import AnimatedPanel from "../components/AnimatedPanel";
 import PresetManager from "../components/PresetManager";
+import EventHistoryPanel from "../components/EventHistoryPanel";
 
 function Dashboard() {
     const [eventPreview, setEventPreview] = useState(null);
@@ -15,6 +16,7 @@ function Dashboard() {
     const [activeMode, setActiveMode] = useState("ai");
     const [notification, setNotification] = useState(null);
     const [presetRefreshKey, setPresetRefreshKey] = useState(0);
+    const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
 
     const handleNotify = (payload) => {
         setNotification(payload);
@@ -28,6 +30,7 @@ function Dashboard() {
     const handleEventCreated = (eventData) => {
         setCreatedEvent(eventData);
         setEventPreview(null);
+        setHistoryRefreshKey((current) => current + 1);
 
         handleNotify({
             type: "success",
@@ -162,6 +165,10 @@ function Dashboard() {
                     </div>
                 </section>
             </div>
+
+            <section className="mt-8">
+                <EventHistoryPanel refreshKey={historyRefreshKey}/>
+            </section>
         </main>
     );
 }

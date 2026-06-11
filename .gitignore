@@ -20,3 +20,6 @@ backend/credentials.json
 backend/token.json
 
 backend/calendar_agent.db
+
+backend/.env
+frontend/.env

@@ -29,7 +29,7 @@ function GoogleCalendarStatus({onNotify}) {
     }, []);
 
     const handleConnect = () => {
-        window.location.href = "http://127.0.0.1:8000/api/auth/google";
+        window.location.href = `${import.meta.env.VITE_API_BASE_URL}/auth/google`;
     };
 
     const handleDisconnect = async () => {
