@@ -68,5 +68,5 @@ app.include_router(
 @app.get("/")
 def root():
     return {
-        "message": "Welcome to CalPilot API"
+        "message": "Welcome to Calendar Agent API"
     }

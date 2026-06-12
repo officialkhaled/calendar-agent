@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     frontend_url: str = "http://localhost:5173"
 
     lm_studio_base_url: str = "http://localhost:1234/api/v1"
-    lm_studio_model: str = "google/gemma-4-e4b"
+    lm_studio_model: str = "qwen/qwen2.5-vl-7b"
     lm_studio_timeout_seconds: int = 180
 
     app_timezone: str = "Europe/London"
